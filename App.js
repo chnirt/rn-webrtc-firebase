@@ -17,28 +17,14 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { AuthProvider } from './src/context'
 import { appTitle } from './src/env';
+import { AppNavigation } from './src/navigation';
 
-function HomeScreen() {
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-      <Text>Home Screen
-        {appTitle}
-      </Text>
-    </View>
-  );
-}
-
-const Stack = createNativeStackNavigator();
 
 const App = () => {
 
   return (
     <AuthProvider>
-      <NavigationContainer>
-        <Stack.Navigator>
-          <Stack.Screen name="Home" component={HomeScreen} />
-        </Stack.Navigator>
-      </NavigationContainer>
+      <AppNavigation />
     </AuthProvider>
   );
 };
