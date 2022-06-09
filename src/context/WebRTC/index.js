@@ -23,15 +23,11 @@ import {
   where,
 } from 'firebase/firestore'
 import {
-  ScreenCapturePickerView,
   RTCPeerConnection,
   RTCIceCandidate,
   RTCSessionDescription,
-  RTCView,
   MediaStream,
-  MediaStreamTrack,
   mediaDevices,
-  registerGlobals
 } from 'react-native-webrtc';
 import { auth, db } from '../../firebase'
 import {
@@ -56,6 +52,15 @@ const servers = {
   iceCandidatePoolSize: 10,
 }
 
+export const CONSTRAINTS = {
+  audio: !true,
+  video: {
+    facingMode: 'user',
+    width: 256,
+    height: 256,
+  },
+}
+
 const IS_MOBILE = true
 
 const WebRTCContext = createContext()
@@ -72,13 +77,12 @@ export const WebRTCProvider = ({ children }) => {
   }) => {
     pc.current = new RTCPeerConnection(servers)
 
-    const constraints = { audio: !true, video: { facingMode: "user" } }
-
     let localStream
+
     if (IS_MOBILE) {
-      localStream = await mediaDevices.getUserMedia(constraints)
+      localStream = await mediaDevices.getUserMedia(CONSTRAINTS)
     } else {
-      localStream = await navigator.mediaDevices.getUserMedia(constraints)
+      localStream = await navigator.mediaDevices.getUserMedia(CONSTRAINTS)
     }
 
     // const track = localStream.getVideoTracks()[0]
@@ -108,7 +112,7 @@ export const WebRTCProvider = ({ children }) => {
     }
 
     handleLocalVideo(localStream)
-    // handleRemoteVideo(remoteStream)
+    handleRemoteVideo(remoteStream)
 
     if (!auth.currentUser) return
     const user = auth.currentUser
@@ -130,17 +134,12 @@ export const WebRTCProvider = ({ children }) => {
 
   const stopStreamedVideo = useCallback(async ({ stream, handleStream }) => {
     try {
-      if (IS_MOBILE) {
-        stream?.getTracks().map(
-          track => track.stop()
-        );
-        handleStream(null)
-        return
-      }
       const tracks = await stream?.getTracks()
       tracks?.forEach(function (track) {
         track.stop()
-        videoRef.srcObject.removeTrack(track)
+        if (!IS_MOBILE) {
+          stream.removeTrack(track)
+        }
       })
       handleStream(null)
     } catch (error) {

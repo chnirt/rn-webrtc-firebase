@@ -47,7 +47,7 @@ export const HomeScreen = () => {
         },
       })
     },
-    [getStreamVideo, call]
+    [getStreamVideo, handleLocalVideo, handleRemoteVideo, call]
   )
 
   const handleAnswer = useCallback(async () => {
@@ -56,7 +56,7 @@ export const HomeScreen = () => {
       handleRemoteVideo
     })
     answer()
-  }, [getStreamVideo, answer])
+  }, [getStreamVideo, handleLocalVideo, handleRemoteVideo, answer])
 
   const handleDecline = useCallback(() => {
     decline()
@@ -89,7 +89,7 @@ export const HomeScreen = () => {
             {((currentCallData?.status === CALL_STATUS.CALLING &&
               currentCallData?.caller?.uid === user?.uid) ||
               currentCallData?.status === CALL_STATUS.ANSWER) && (
-                <View>
+                <View style={styles.row}>
                   <Text>
                     {currentCallData?.caller?.email}
                   </Text>
@@ -98,7 +98,7 @@ export const HomeScreen = () => {
               )}
             {currentCallData?.status === CALL_STATUS.CALLING &&
               currentCallData?.callee?.uid === user?.uid && (
-                <View>
+                <View style={styles.row}>
                   <Text>
                     {currentCallData?.caller?.email}
                   </Text>
