@@ -30,7 +30,7 @@ export const AuthProvider = ({ children }) => {
   const debounceFetchUser = _.debounce(fetchUser, 1000)
 
   useEffect(() => {
-    onAuthStateChanged(
+    const unsubscribe = onAuthStateChanged(
       auth,
       async (fbUser) => {
         if (fbUser) {
@@ -42,15 +42,20 @@ export const AuthProvider = ({ children }) => {
           }
           // ...
         } else {
+          setUser(null)
           // User is signed out
           // ...
         }
       },
       (error) => {
-        handleError(error)
+        console.log("onAuthStateChanged", error)
+        // handleError(error)
       },
       () => { }
     )
+    return () => {
+      unsubscribe()
+    }
   }, [user, debounceFetchUser])
 
   const value = useMemo(() => ({

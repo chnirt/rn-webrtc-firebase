@@ -1,4 +1,14 @@
 // https://github.com/raymon-zhang/webrtc-react-videochat/blob/master/src/App.js#L35
+// https://blog.logrocket.com/creating-rn-video-calling-app-react-native-webrtc/
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import {
   collection,
   deleteDoc,
@@ -13,20 +23,23 @@ import {
   where,
 } from 'firebase/firestore'
 import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+  ScreenCapturePickerView,
+  RTCPeerConnection,
+  RTCIceCandidate,
+  RTCSessionDescription,
+  RTCView,
+  MediaStream,
+  MediaStreamTrack,
+  mediaDevices,
+  registerGlobals
+} from 'react-native-webrtc';
 import { auth, db } from '../../firebase'
 import {
   addDocument,
   addSubCollection,
   updateDocument,
 } from '../../firebase/service'
+
 
 export const CALL_STATUS = {
   CALLING: 'calling',
@@ -43,22 +56,7 @@ const servers = {
   iceCandidatePoolSize: 10,
 }
 
-if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
-  console.log("enumerateDevices() not supported.");
-}
-
-// List cameras and microphones.
-
-navigator.mediaDevices.enumerateDevices()
-  .then(function (devices) {
-    devices.forEach(function (device) {
-      console.log(device.kind + ": " + device.label +
-        " id = " + device.deviceId);
-    });
-  })
-  .catch(function (err) {
-    console.log(err.name + ": " + err.message);
-  });
+const IS_MOBILE = true
 
 const WebRTCContext = createContext()
 
@@ -68,18 +66,31 @@ export const WebRTCProvider = ({ children }) => {
   const pc = useRef(new RTCPeerConnection(servers))
   const dc = useRef(null)
 
-  const getStreamVideo = useCallback(async ({ localRef, remoteRef }) => {
+  const getStreamVideo = useCallback(async ({
+    handleLocalVideo,
+    handleRemoteVideo
+  }) => {
     pc.current = new RTCPeerConnection(servers)
 
-    const constraints = { audio: true, video: { facingMode: "user" } }
+    const constraints = { audio: !true, video: { facingMode: "user" } }
 
-    const localStream = await navigator.mediaDevices.getUserMedia(constraints)
+    let localStream
+    if (IS_MOBILE) {
+      localStream = await mediaDevices.getUserMedia(constraints)
+    } else {
+      localStream = await navigator.mediaDevices.getUserMedia(constraints)
+    }
 
-    const track = localStream.getVideoTracks()[0]
-    track.onended = (e) => console.log('Hangup or dropped call')
+    // const track = localStream.getVideoTracks()[0]
+    // track.onended = (e) => console.log('Hangup or dropped call')
 
     localStream.getTracks().forEach((track) => {
-      pc.current.addTrack(track, localStream)
+      if (IS_MOBILE) {
+        pc.current.addStream(localStream);
+        pc.current.getLocalStreams()[0].addTrack(track);
+      } else {
+        pc.current.addTrack(track, localStream)
+      }
     })
 
     const remoteStream = new MediaStream()
@@ -90,14 +101,14 @@ export const WebRTCProvider = ({ children }) => {
       })
     }
 
-    // pc.current.ontrack = (e) => {
-    //   // we got remote stream
-    //   console.log('Set remote stream: ', e.streams[0])
-    //   remoteRef.srcObject = e.streams[0]
-    // }
+    if (IS_MOBILE) {
+      pc.current.onaddstream = event => {
+        handleRemoteVideo(event.stream);
+      };
+    }
 
-    localRef.srcObject = localStream
-    remoteRef.srcObject = remoteStream
+    handleLocalVideo(localStream)
+    // handleRemoteVideo(remoteStream)
 
     if (!auth.currentUser) return
     const user = auth.currentUser
@@ -117,15 +128,21 @@ export const WebRTCProvider = ({ children }) => {
     }
   }, [])
 
-  const stopStreamedVideo = useCallback(async (videoRef) => {
+  const stopStreamedVideo = useCallback(async ({ stream, handleStream }) => {
     try {
-      const stream = videoRef.srcObject
+      if (IS_MOBILE) {
+        stream?.getTracks().map(
+          track => track.stop()
+        );
+        handleStream(null)
+        return
+      }
       const tracks = await stream?.getTracks()
       tracks?.forEach(function (track) {
         track.stop()
         videoRef.srcObject.removeTrack(track)
       })
-      videoRef.srcObject = null
+      handleStream(null)
     } catch (error) {
       console.log(error)
     }
@@ -303,8 +320,8 @@ export const WebRTCProvider = ({ children }) => {
   }, [currentCallReference?.id])
 
   useEffect(() => {
-    if (!auth.currentUser) return
     const user = auth.currentUser
+    if (!user) return
     const incomingCallRef = query(
       collection(db, 'calls'),
       where('status', '==', CALL_STATUS.CALLING),
@@ -322,6 +339,7 @@ export const WebRTCProvider = ({ children }) => {
         querySnapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
             const callRef = change.doc.ref
+            console.log(callRef)
             setCurrentCallReference(callRef)
           }
         })
