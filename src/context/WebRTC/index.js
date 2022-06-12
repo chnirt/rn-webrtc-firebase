@@ -22,13 +22,6 @@ import {
   Timestamp,
   where,
 } from 'firebase/firestore'
-import {
-  RTCPeerConnection,
-  RTCIceCandidate,
-  RTCSessionDescription,
-  MediaStream,
-  mediaDevices,
-} from 'react-native-webrtc';
 import { auth, db } from '../../firebase'
 import {
   addDocument,
@@ -65,71 +58,77 @@ const IS_MOBILE = true
 
 const WebRTCContext = createContext()
 
-export const WebRTCProvider = ({ children }) => {
+export const WebRTCProvider = ({ children, navigatorConfig }) => {
   const [currentCallReference, setCurrentCallReference] = useState(null)
   const [currentCallData, setCurrentCallData] = useState(null)
-  const pc = useRef(new RTCPeerConnection(servers))
+  const pc = useRef(navigatorConfig ? new navigatorConfig.RTCPeerConnection(servers) : new RTCPeerConnection(servers))
   const dc = useRef(null)
 
   const getStreamVideo = useCallback(async ({
     handleLocalVideo,
     handleRemoteVideo
   }) => {
-    pc.current = new RTCPeerConnection(servers)
+    pc.current = navigatorConfig ? new navigatorConfig.RTCPeerConnection(servers) : new RTCPeerConnection(servers)
 
     let localStream
 
-    if (IS_MOBILE) {
-      localStream = await mediaDevices.getUserMedia(CONSTRAINTS)
+    if (navigatorConfig) {
+      localStream = await navigatorConfig?.mediaDevices?.getUserMedia(CONSTRAINTS)
     } else {
       localStream = await navigator.mediaDevices.getUserMedia(CONSTRAINTS)
     }
 
-    // const track = localStream.getVideoTracks()[0]
-    // track.onended = (e) => console.log('Hangup or dropped call')
-
     localStream.getTracks().forEach((track) => {
-      if (IS_MOBILE) {
+      if (navigatorConfig) {
         pc.current.addStream(localStream);
-        pc.current.getLocalStreams()[0].addTrack(track);
+        pc.current.getLocalStreams()[0]?.addTrack(track);
       } else {
         pc.current.addTrack(track, localStream)
       }
     })
 
-    const remoteStream = new MediaStream()
+    const remoteStream = navigatorConfig ? new navigatorConfig.MediaStream() : new MediaStream()
 
-    pc.current.ontrack = (event) => {
-      event.streams[0].getTracks().forEach((track) => {
-        remoteStream.addTrack(track)
-      })
-    }
-
-    if (IS_MOBILE) {
+    if (navigatorConfig) {
       pc.current.onaddstream = event => {
         handleRemoteVideo(event.stream);
       };
+    } else {
+      pc.current.ontrack = (event) => {
+        event.streams[0].getTracks().forEach((track) => {
+          remoteStream.addTrack(track)
+        })
+      }
+    }
+
+    pc.current.onconnectionstatechange = (event) => {
+      console.log('pc.current.connectionState---', pc.current.connectionState)
+      switch (pc.current.connectionState) {
+        case 'new':
+        case 'checking':
+          // setOnlineStatus("Connecting...");
+          break
+        case 'connected':
+          // setOnlineStatus("Online");
+          break
+        case 'disconnected':
+          // setOnlineStatus("Disconnecting...");
+          // decline()
+          break
+        case 'closed':
+          // setOnlineStatus("Offline");
+          break
+        case 'failed':
+          // setOnlineStatus("Error");
+          break
+        default:
+          // setOnlineStatus("Unknown");
+          break
+      }
     }
 
     handleLocalVideo(localStream)
     handleRemoteVideo(remoteStream)
-
-    if (!auth.currentUser) return
-    const user = auth.currentUser
-
-    dc.current = pc.current.createDataChannel(user.uid)
-
-    dc.current.onmessage = function (event) {
-      console.log('received: ' + event.data)
-    }
-
-    dc.current.onopen = function () {
-      console.log('datachannel open')
-    }
-
-    dc.current.onclose = function () {
-      console.log('datachannel close')
-    }
   }, [])
 
   const stopStreamedVideo = useCallback(async ({ stream, handleStream }) => {
@@ -195,7 +194,7 @@ export const WebRTCProvider = ({ children }) => {
     onSnapshot(callReference, async (doc) => {
       const data = doc.data()
       if (!pc.current.currentRemoteDescription && data?.answer) {
-        const answerDescription = new RTCSessionDescription(data.answer)
+        const answerDescription = navigatorConfig ? new navigatorConfig.RTCSessionDescription(data.answer) : new RTCSessionDescription(data.answer)
         pc.current.setRemoteDescription(answerDescription)
       }
     })
@@ -206,7 +205,7 @@ export const WebRTCProvider = ({ children }) => {
         querySnapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
             const data = change.doc.data()
-            const candidate = new RTCIceCandidate(data)
+            const candidate = navigatorConfig ? new navigatorConfig.RTCIceCandidate(data) : new RTCIceCandidate(data)
             pc.current.addIceCandidate(candidate)
           }
         })
@@ -241,7 +240,7 @@ export const WebRTCProvider = ({ children }) => {
 
     const offerDescription = callData.offer
     await pc.current.setRemoteDescription(
-      new RTCSessionDescription(offerDescription)
+      navigatorConfig ? new navigatorConfig.RTCSessionDescription(offerDescription) : new RTCSessionDescription(offerDescription)
     )
 
     const answerDescription = await pc.current.createAnswer()
@@ -262,7 +261,7 @@ export const WebRTCProvider = ({ children }) => {
         querySnapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
             const data = change.doc.data()
-            const candidate = new RTCIceCandidate(data)
+            const candidate = navigatorConfig ? new navigatorConfig.RTCIceCandidate(data) : new RTCIceCandidate(data)
             pc.current.addIceCandidate(candidate)
           }
         })
@@ -338,7 +337,6 @@ export const WebRTCProvider = ({ children }) => {
         querySnapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
             const callRef = change.doc.ref
-            console.log(callRef)
             setCurrentCallReference(callRef)
           }
         })
@@ -361,36 +359,9 @@ export const WebRTCProvider = ({ children }) => {
             id: querySnapshot.id,
             ...querySnapshot.data(),
           }
-          console.log(data)
           setCurrentCallData(data)
         }
       )
-
-      // pc.current.onconnectionstatechange = (event) => {
-      //   switch (pc.current.connectionState) {
-      //     case 'new':
-      //     case 'checking':
-      //       // setOnlineStatus("Connecting...");
-      //       break
-      //     case 'connected':
-      //       // setOnlineStatus("Online");
-      //       break
-      //     case 'disconnected':
-      //       // setOnlineStatus("Disconnecting...");
-      //       decline()
-      //       break
-      //     case 'closed':
-      //       // setOnlineStatus("Offline");
-      //       break
-      //     case 'failed':
-      //       // setOnlineStatus("Error");
-      //       break
-      //     default:
-      //       // setOnlineStatus("Unknown");
-      //       break
-      //   }
-      // }
-
       return () => {
         unsubscribeCurrentCall()
       }
